@@ -1,4 +1,4 @@
-from dbm import ndbm
+from email import header
 import requests
 import datetime
 import calendar
@@ -31,63 +31,49 @@ def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, 
 def ExtractUserDays() -> int:
     """Extract the amount of days the user wants to look back and search the r/WallStreetBets subreddit"""
 
+
+
     print("Get ready to get some meme-money!! Lets see what has been going on with r/WallStreetBets!!")
     print("How many days do you want me to look back to find those juicy hot stock tips?")
     numDays = input()
-    while not numDays.isdigit() or int(numDays) < 1:
+    while not numDays.isdigit():
         #Ensure integer value was entered
         print("Please enter a whole number of days greater than 0")
         numDays = input()
     return int(numDays)
-def LoadKeywordDict(companyList) -> dict:
+def parseSearchData(symbolList) -> dict():
     """Loads keyword dictionary based on the data in stockdata.tsv"""
 
-    class stockInfo:
+    class symbolInfo:
         """Gives data on a given stock, described by it's ticker symbol, name, industry, and market capitalization"""
-        def __init__(self, symbol, companyName,industry,marketCap):
+        def __init__(self, symbol, additionalData: dict()):
             self.Symbol = symbol                    # Stock's ticker symbol
-            self.CompanyName = companyName          
-            self.Industry = industry                
-            self.MarketCap = marketCap              # Stock's market capitalization (company valuation via stock price * # shares that exist)
             self.HitsOnWSB = 0                      # Keeps track of popularity in terms of references on WallStreetBets
+            if additionalData:
+                self.AdditionalData = additionalData    # Takes all the user's extra columns for association with the symbol
     
     print("\nGenerating stock data...")
-    keywordLookup = dict()
-    bannedWordList = list()
-
-    #Populate the banned word list based on english prepositions
-    with open('exclusions.json') as prepoFile:
-        prepoJSON = json.load(prepoFile)
-        for p in prepoJSON:
-            bannedWordList.append(p)
-
-
-    with open('stockdata.tsv') as src:
+    symbolDict = dict()
+    with open('searchdata.tsv') as src:
         lines = src.readlines()
-        companyCount = len(lines)
-        for l in lines:
+        header = lines[0].split('\t')
+        symbolCount = len(lines)
+        for l in lines[1:]:
             lcontent = l.split('\t')
-            newStock = stockInfo(lcontent[0],lcontent[1],lcontent[2],lcontent[3])
-            companyList.append(newStock)
-
-            # Connect dictionary terms based on the words in the company's name and ticker.
-            keywordLookup[lcontent[0]] = newStock   # Stocks ticker attached to newStock object
-            keywordLookup["$" + lcontent[0]] = newStock 
-            companyWords = lcontent[1].split()      # Company words (in the name) are split to be added
-            for cw in companyWords:
-                cwLower = cw.lower()
-                if cwLower in bannedWordList:
-                    continue
-                if cwLower in keywordLookup:
-                    # We ban the word since it has already occured
-                    bannedWordList.append(cwLower)
-                    keywordLookup.__delitem__(cwLower)
-                    continue
-                keywordLookup[cwLower] = newStock
-    print("Stock data generated for " + str(companyCount) + " companies.")
-    return keywordLookup
-def ParseWSB(keywordDict,nDays):
-    """Parses the r/WallStreetBets subreddit using the keyword dictionary, adds the number of hits to the stock ino class"""
+            if len(lcontent) > 1:
+                rowData = dict()
+                i = 1
+                for c in lcontent[1:]:
+                    rowData[header[i]] = c.strip('\r')
+                    i += 1
+            newSymbol = symbolInfo(lcontent[0],rowData)
+            symbolDict[lcontent[0]] = newSymbol
+            symbolList.append(newSymbol)
+    return symbolDict
+            
+    print("Symbols and their data columns allocated for " + str(symbolCount) + " symbols.")
+def ParseWSB(symbolDict,nDays):
+    """Parses the r/WallStreetBets subreddit using the symbols, adds the number of hits to symbolInfo class"""
     print("\n###############################\nExtracting reddit data, please wait")
 
     def executeAPICalls(command):
@@ -117,6 +103,7 @@ def ParseWSB(keywordDict,nDays):
         size = 100
 
         totalTimePeriod = before - after
+        failIter = 0            # Counts how many times the API has failed in a row.
         while True:
             # defining a params dict for the parameters to be sent to the API
             PARAMS = {'subreddit':subreddit,'sort':sort,'sort_type':sort_type,'after':after,'before':before,'size':size,"fields":usefulFieldsString}
@@ -128,11 +115,18 @@ def ParseWSB(keywordDict,nDays):
 
             # sending get request and saving the response as response object
             r = requests.get(url = URL, params = urllib.parse.urlencode(PARAMS, safe=','))
-            if r.status_code < 200 and r.status_code >= 300:
-                print("Failed API call: " + r.status_code + " status code. Try API call manually with the following link:\n" + r.url)
-                print("Closing program... (press enter to continue)")
-                holdopen = input()
-                exit
+            if r.status_code < 200 or r.status_code >= 300:
+                print("Failed API call: " + str(r.status_code) + " status code." + ' ' * 100, end = "\r")
+                if failIter < 900:
+                    # Retry the API calls for up to 15 minutes
+                    time.sleep(1)
+                    print("... Trying again ( " + str(failIter) + " / 900 )" + " ..." + ' ' * 100,end = "\r")
+                    continue
+                else:
+                    # API failed -- Close program
+                    print("Closing program... (press enter to continue)")
+                    input()
+                    exit
             lastRequestTime = time.time()
 
             # extracting data in json format
@@ -146,43 +140,61 @@ def ParseWSB(keywordDict,nDays):
                         latestUTCTime = props[prop]
                         continue
                     else:
-                        # Scrape all word in strings and check if any keywords exist
                         tmp = props[prop]
                         tmpWords = tmp.split()
+                        # Verify that post/comment is not in all caps -- if so continue
+                        allCapsWords = 0
+                        allWords = len(tmpWords)
+                        submissionInAllCaps = False
                         for w in tmpWords:
-                            if w.upper() == w:
-                                # Ticker Symbol match
-                                if w in keywordDict.keys():
-                                    keywordDict[w].HitsOnWSB += 1
-                            if w.lower() in keywordDict.keys():
-                                # Generic word match
-                                keywordDict[w.lower()].HitsOnWSB += 1
+                            if w.isupper():
+                                allCapsWords += 1
+                                if allCapsWords > .5 * allWords:
+                                    # Post/Comment is in all caps and should be thrown out
+                                    submissionInAllCaps = True
+                                    break
+                        if submissionInAllCaps == False:
+                            # Scrape all word in strings and check if any keywords exist
+                            for w in tmpWords:
+                                if w in symbolDict.keys() or "$" + w in symbolDict.keys() :
+                                    # Ticker Symbol match
+                                    symbolDict[w].HitsOnWSB += 1
                 before = latestUTCTime
             printProgressBar(current_utc_time - latestUTCTime, totalTimePeriod)
         printProgressBar(totalTimePeriod, totalTimePeriod)
     executeAPICalls("submission")
     executeAPICalls("comment")
-def WriteOutputTSC(clist, nDays):
+def WriteOutputTSC(symbolList, nDays):
 
     print("Writing the company data to .TSV")
     filePath = str(datetime.date.today()) + '_' + str(nDays) + 'day_output.tsv'
     if os.path.exists(filePath):
         os.remove(filePath)
     with open(filePath, 'x') as out_file:
-        tsv_writer = csv.writer(out_file, delimiter='\t')
-        tsv_writer.writerow(['Symbol', 'CompanyName','Industry','MarketCap','HitsOnWSB'])
-        for c in clist:
-            tsv_writer.writerow([c.Symbol,c.CompanyName,c.Industry,c.MarketCap,c.HitsOnWSB])
+        listOfHeaders = list()
+        listOfHeaders.append("Symbol")
+        listOfHeaders.append("HitsOnWSB")
+        for ad in symbolList[0].AdditionalData.keys():
+            listOfHeaders.append(ad)
+        tsv_writer = csv.writer(out_file,delimiter='\t')
+        tsv_writer.writerow(listOfHeaders)
+        for s in symbolList:
+            listOfData = list()
+            listOfData.append(s.Symbol)
+            listOfData.append(s.HitsOnWSB)
+            for ad in s.AdditionalData.values():
+                listOfData.append(ad)
+            tsv_writer.writerow(listOfData)
     print("Complete!! Output file is located at the following:\n" + filePath)
 
 
 def main():
-    companyList = list()
+    searchDataList = list()
     nDays = ExtractUserDays()
-    keywordDict = LoadKeywordDict(companyList)
-    ParseWSB(keywordDict, nDays)
-    companyList.sort(key=lambda x: x.HitsOnWSB,reverse=True)
-    WriteOutputTSC(companyList,nDays)
+    searchDataDict = parseSearchData(searchDataList)
+    ParseWSB(searchDataDict, nDays)
+    searchDataList.sort(key=lambda x: x.HitsOnWSB,reverse=True)
+    WriteOutputTSC(searchDataList,nDays)
 
     
 
