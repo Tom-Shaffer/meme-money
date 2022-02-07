@@ -29,7 +29,11 @@ def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, 
     if iteration == total: 
         print()
 def ExtractUserDays() -> int:
-    """Extract the amount of days the user wants to look back and search the r/WallStreetBets subreddit"""
+    """
+    Extract the amount of days the user wants to look back and search the r/WallStreetBets subreddit
+    
+    Outputs the numnber of days the user wishes to extract data from
+    """
 
 
 
@@ -42,10 +46,25 @@ def ExtractUserDays() -> int:
         numDays = input()
     return int(numDays)
 def parseSearchData(symbolList) -> dict():
-    """Loads keyword dictionary based on the data in stockdata.tsv"""
+    """
+    Loads keyword dictionary based on the data in stockdata.tsv
+    @params:
+        symbolList  -Required   :   List of symbols to fill and be sorted later on
+    
+    Outputs a dictionary based on:
+        keys: Symbols
+        values: symbolInfo objects
+    """
 
     class symbolInfo:
-        """Gives data on a given stock, described by it's ticker symbol, name, industry, and market capitalization"""
+        """
+        Gives data on a given stock, described by it's ticker symbol, name, industry, and market capitalization
+        @attributes:
+            Symbol: Symbol associated with a given crypto / stock market security
+            HitsOnWSB: Iterated integer based on how many times the symbol occurs on WSB
+            AdditionalData: Collects all ancillary data on the searchdata.tsv and associates it with the given symbol
+        
+        """
         def __init__(self, symbol, additionalData: dict()):
             self.Symbol = symbol                    # Stock's ticker symbol
             self.HitsOnWSB = 0                      # Keeps track of popularity in terms of references on WallStreetBets
@@ -73,7 +92,14 @@ def parseSearchData(symbolList) -> dict():
             
     print("Symbols and their data columns allocated for " + str(symbolCount) + " symbols.")
 def ParseWSB(symbolDict,nDays):
-    """Parses the r/WallStreetBets subreddit using the symbols, adds the number of hits to symbolInfo class"""
+    """
+    Parses the r/WallStreetBets subreddit using the symbols, adds the number of hits to symbolInfo class
+    @params:
+        symbolDict  -Required   :   Dictionary of symbols -> symbolnfo objects
+        nDays       -Required   :   Int number of days to look back on the r/WallStreetBets subreddit
+
+    
+    """
     print("\n###############################\nExtracting reddit data, please wait")
 
     def executeAPICalls(command):
@@ -165,7 +191,12 @@ def ParseWSB(symbolDict,nDays):
     executeAPICalls("submission")
     executeAPICalls("comment")
 def WriteOutputTSC(symbolList, nDays):
-
+    """
+    Writes the sorted symbols and their associated data to a tab-delimited document
+    @params:
+        symbolList  -Required   :   Sorted list of symbols that will be printed in list order
+        nDays       -Required   :   Number of days searched -- Will be used for naming the output file
+    """
     print("Writing the company data to .TSV")
     filePath = str(datetime.date.today()) + '_' + str(nDays) + 'day_output.tsv'
     if os.path.exists(filePath):
