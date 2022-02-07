@@ -43,16 +43,6 @@
 
 This python project allows for stock analytics to be collected from the r/WallStreetBets subreddit
 by searching for specific upper-case symbols in posts and comments. No API keys required, go ahead and downoad the project and run the meme-money.py to get started!
-    <br />
-    <a href="https://github.com/Tom-Shaffer/meme-money"><strong>Explore the docs »</strong></a>
-    <br />
-    <br />
-    <a href="https://github.com/Tom-Shaffer/meme-money">View Demo</a>
-    ·
-    <a href="https://github.com/Tom-Shaffer/meme-money/issues">Report Bug</a>
-    ·
-    <a href="https://github.com/Tom-Shaffer/meme-money/issues">Request Feature</a>
-  </p>
 </div>
 
 ### Built With
